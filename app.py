@@ -1,149 +1,157 @@
-# app.py
+# app.py - VERSI LENGKAP
 import streamlit as st
 import pandas as pd
-import numpy as np
 import joblib
 import os
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-# Konfigurasi Halaman
 st.set_page_config(page_title="Growth Monitor AI", layout="wide")
 
-# ==========================================
-# 1. LOAD SYSTEM
-# ==========================================
-if not os.path.exists('malnutrition_system.pkl'):
-    st.error("File sistem tidak ditemukan! Jalankan 'python model.py' terlebih dahulu.")
+# --- 1. SETUP & LOAD ---
+if not os.path.exists('smart_growth_system.pkl'):
+    st.error("Jalankan model.py dulu!")
     st.stop()
 
-# Load artifacts (Model + Standar WHO)
-system_data = joblib.load('malnutrition_system.pkl')
-model = system_data['model']
-standards = system_data['standards']
+sys_data = joblib.load('smart_growth_system.pkl')
+model_w = sys_data['model_weight']
+model_h = sys_data['model_height']
+standards = sys_data['standards']
 
-DB_FILE = 'riwayat_kesehatan_anak.csv'
+DB_FILE = 'db_pertumbuhan.csv'
 
-# ==========================================
-# 2. FUNGSI PENDUKUNG
-# ==========================================
-def get_history():
+# --- 2. SISTEM PAKAR GIZI (Nutrition Rules) ---
+def get_nutrition_advice(age, w_class, h_class):
+    advice = {"status": "", "menu": [], "tips": []}
+    
+    # Base Advice by Age
+    if age < 6:
+        advice['menu'] = ["Hanya ASI Eksklusif."]
+        advice['tips'] = ["Susui sesering mungkin.", "Ibu makan bergizi."]
+    elif 6 <= age < 12:
+        advice['menu'] = ["Bubur lumat (Nasi+Prohe+Lemak).", "Puree buah."]
+        advice['tips'] = ["Tekstur bertahap (encer ke kental).", "Wajib Protein Hewani."]
+    else:
+        advice['menu'] = ["Makanan keluarga.", "Susu UHT/Pasteurisasi."]
+        
+    # Condition Advice (Weight)
+    # 0,1: Kurus | 2: Normal | 3,4: Gemuk
+    if w_class in [0, 1]:
+        advice['status'] += "Berat Kurang. "
+        advice['tips'].insert(0, "Tambahkan Minyak/Santan di makanan (Booster BB).")
+        advice['menu'].append("Telur Puyuh/Ayam setiap hari.")
+    elif w_class in [3, 4]:
+        advice['status'] += "Berat Berlebih. "
+        advice['tips'].insert(0, "Kurangi Gula (Susu kental manis, sirup).")
+        advice['tips'].append("Perbanyak aktivitas fisik.")
+        advice['menu'] = [m for m in advice['menu'] if 'Santan' not in m] # Hapus lemak
+        
+    # Condition Advice (Height)
+    if h_class in [0, 1]: # Stunted
+        advice['status'] += "Perawakan Pendek."
+        advice['tips'].append("Wajib makanan tinggi Kalsium & Zinc.")
+        advice['menu'].append("Ikan teri, Daging merah, Tahu/Tempe.")
+        
+    if not advice['status']: advice['status'] = "Gizi Baik & Normal"
+    return advice
+
+# --- 3. FUNGSI DATA ---
+def save_data(nama, umur, berat, tinggi, stat_w, stat_h):
     if os.path.exists(DB_FILE):
-        return pd.read_csv(DB_FILE)
-    return pd.DataFrame(columns=['Tanggal', 'Nama', 'Umur', 'Berat', 'Tinggi', 'Status'])
+        df = pd.read_csv(DB_FILE)
+    else:
+        df = pd.DataFrame(columns=['Tanggal','Nama','Umur','Berat','Tinggi','Status_Berat','Status_Tinggi'])
+    
+    new = pd.DataFrame([{
+        'Tanggal': datetime.now().strftime("%Y-%m-%d"),
+        'Nama': nama, 'Umur': umur, 'Berat': berat, 'Tinggi': tinggi,
+        'Status_Berat': stat_w, 'Status_Tinggi': stat_h
+    }])
+    pd.concat([df, new], ignore_index=True).to_csv(DB_FILE, index=False)
 
-def save_data(nama, umur, berat, tinggi, status):
-    df = get_history()
-    new_row = pd.DataFrame({
-        'Tanggal': [datetime.now().strftime("%Y-%m-%d")],
-        'Nama': [nama], 'Umur': [umur], 
-        'Berat': [berat], 'Tinggi': [tinggi], 
-        'Status': [status]
-    })
-    pd.concat([df, new_row], ignore_index=True).to_csv(DB_FILE, index=False)
-
-def plot_growth_curve(gender, age, weight, height, child_name):
-    """Membuat grafik posisi anak dibanding standar WHO"""
-    std_data = standards['Male' if gender == 'Laki-laki' else 'Female']['WFA']
+def plot_chart(df, y_col, standard_df, gender_lbl, title):
+    fig, ax = plt.subplots(figsize=(8,3))
     
-    fig, ax = plt.subplots(figsize=(8, 4))
+    # Plot Standar WHO
+    ax.plot(standard_df['Month'], standard_df['M'], color='green', alpha=0.3, label='Standar WHO')
     
-    # Plot Kurva Standar (Median, -2SD, -3SD)
-    ax.plot(std_data['Month'], std_data['M'], color='green', label='Median (Normal)', alpha=0.5)
+    # Plot Data Anak
+    ax.plot(df['Umur'], df[y_col], marker='o', color='blue', label='Anak')
     
-    # Hitung garis batas bawah (-2 SD) secara manual mendekati visualisasi
-    # (Penyederhanaan visual agar cepat dirender)
-    lower_bound = std_data['M'] * 0.8 
-    severe_bound = std_data['M'] * 0.7
-    
-    ax.fill_between(std_data['Month'], lower_bound, std_data['M'], color='yellow', alpha=0.1, label='Risiko Ringan')
-    ax.fill_between(std_data['Month'], 0, lower_bound, color='red', alpha=0.1, label='Malnutrisi')
-    
-    # Plot Posisi Anak
-    ax.scatter(age, weight, color='blue', s=100, zorder=5, label=f'Posisi {child_name}')
-    ax.annotate(f"  {weight}kg", (age, weight))
-    
-    ax.set_title(f"Posisi Berat Badan {child_name} vs Standar WHO")
+    ax.set_title(title)
     ax.set_xlabel("Umur (Bulan)")
-    ax.set_ylabel("Berat (kg)")
-    ax.set_xlim(0, 60)
-    ax.legend()
+    ax.set_ylabel(y_col)
     ax.grid(True, alpha=0.3)
     return fig
 
-# ==========================================
-# 3. USER INTERFACE (UI)
-# ==========================================
-st.title("🛡️ AI Child Growth Protector")
-st.markdown("Sistem Deteksi Malnutrisi & Monitoring Pertumbuhan Anak")
-
-# --- SIDEBAR INPUT ---
+# --- 4. UI ---
 with st.sidebar:
-    st.header("Data Anak")
+    st.header("📝 Input Data")
     nama = st.text_input("Nama Anak")
-    gender = st.radio("Jenis Kelamin", ["Laki-laki", "Perempuan"])
-    umur = st.slider("Umur (bulan)", 0, 60, 12)
-    berat = st.number_input("Berat Badan (kg)", 1.0, 50.0, 8.0, step=0.1)
-    tinggi = st.number_input("Tinggi Badan (cm)", 30.0, 120.0, 70.0, step=0.1)
-    
-    tombol_cek = st.button("🔍 Analisis Kesehatan")
+    gender = st.selectbox("Gender", ["Male", "Female"])
+    umur = st.number_input("Umur (bln)", 0, 60, 12)
+    berat = st.number_input("Berat (kg)", 1.0, 50.0, 9.0)
+    tinggi = st.number_input("Tinggi (cm)", 30.0, 120.0, 75.0)
+    cek = st.button("Analisis")
 
-# --- HALAMAN UTAMA ---
-col1, col2 = st.columns([2, 1])
+st.title("🛡️ Sistem Pemantauan Tumbuh Kembang")
 
-if tombol_cek and nama:
-    # 1. Prediksi AI
-    gender_code = 1 if gender == 'Laki-laki' else 0
-    input_df = pd.DataFrame([[umur, berat, tinggi, gender_code]], 
-                            columns=['Age (months)', 'Weight_kg', 'Height_cm', 'Gender_Code'])
+if cek and nama:
+    # 1. Prediksi
+    g_code = 1 if gender == "Male" else 0
+    in_data = pd.DataFrame([[umur, berat, tinggi, g_code]], columns=['Age (months)','Weight_kg','Height_cm','Gender_Code'])
     
-    prediksi = model.predict(input_df)[0]
-    prob = model.predict_proba(input_df)[0]
+    res_w = model_w.predict(in_data)[0]
+    res_h = model_h.predict(in_data)[0]
     
-    # 2. Tampilan Hasil
-    with col1:
-        st.subheader("Hasil Diagnosis")
-        if prediksi == 1:
-            st.error(f"⚠️ PERINGATAN: Terdeteksi Risiko Malnutrisi (Confidence: {prob[1]:.1%})")
-            st.markdown("""
-            **Rekomendasi Tindakan:**
-            - Tingkatkan asupan protein hewani (telur, ikan, daging).
-            - Konsultasi ke Posyandu/Dokter terdekat.
-            - Pantau berat badan 1 minggu lagi.
-            """)
-            status_text = "Malnutrisi"
-        else:
-            st.success(f"✅ KONDISI BAIK: Pertumbuhan Normal (Confidence: {prob[0]:.1%})")
-            st.markdown("""
-            **Saran:**
-            - Pertahankan pola makan gizi seimbang.
-            - Pastikan tidur cukup dan stimulasi bermain.
-            """)
-            status_text = "Normal"
-            
-        # Tampilkan Grafik Posisi Anak
-        st.pyplot(plot_growth_curve(gender, umur, berat, tinggi, nama))
+    # Mapping
+    map_w = {0:"Sangat Kurus", 1:"Kurus", 2:"Normal", 3:"Gemuk", 4:"Obesitas"}
+    map_h = {0:"Sangat Pendek", 1:"Pendek", 2:"Normal"}
+    
+    txt_w = map_w[res_w]
+    txt_h = map_h[res_h]
+    
+    # 2. Rekomendasi
+    rek = get_nutrition_advice(umur, res_w, res_h)
+    
+    # 3. Tampilan Atas
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Hasil Analisis")
+        st.info(f"Status Berat: {txt_w}")
+        st.info(f"Status Tinggi: {txt_h}")
+        save_data(nama, umur, berat, tinggi, txt_w, txt_h)
         
-        # Simpan ke Database
-        save_data(nama, umur, berat, tinggi, status_text)
+    with c2:
+        st.subheader("💡 Rekomendasi Gizi")
+        st.write(f"**Kesimpulan:** {rek['status']}")
+        st.markdown("**Menu Saran:**")
+        for m in rek['menu']: st.write(f"- {m}")
+        st.markdown("**Tips:**")
+        for t in rek['tips']: st.write(f"- {t}")
 
-    # 3. Riwayat Monitoring (Kanan)
-    with col2:
-        st.subheader("Riwayat Mingguan")
-        df_log = get_history()
-        if not df_log.empty:
-            df_anak = df_log[df_log['Nama'] == nama]
-            if not df_anak.empty:
-                st.dataframe(df_anak[['Tanggal', 'Berat', 'Status']].tail(5), hide_index=True)
-                
-                # Sparkline chart kecil
-                st.line_chart(df_anak.set_index('Tanggal')['Berat'])
-            else:
-                st.info("Data baru pertama kali.")
-        else:
-            st.info("Belum ada data historis.")
+st.divider()
 
-elif tombol_cek and not nama:
-    st.warning("Mohon isi nama anak terlebih dahulu.")
+# --- 5. MONITORING HISTORY ---
+st.subheader("📊 Riwayat Perkembangan")
+if os.path.exists(DB_FILE):
+    df_all = pd.read_csv(DB_FILE)
+    df_anak = df_all[df_all['Nama'] == nama]
+    
+    if not df_anak.empty:
+        # Tampilan Tabel Scrollable (Bukan cuma 5 baris)
+        st.dataframe(df_anak, use_container_width=True)
+        
+        # Dual Grafik
+        std = standards[gender]
+        t1, t2 = st.tabs(["Grafik Berat", "Grafik Tinggi"])
+        
+        with t1:
+            st.pyplot(plot_chart(df_anak, 'Berat', std['WFA'], gender, "Grafik Berat Badan"))
+        with t2:
+            st.pyplot(plot_chart(df_anak, 'Tinggi', std['HFA'], gender, "Grafik Tinggi Badan"))
+            
+    else:
+        st.warning("Belum ada data untuk nama ini.")
 else:
-    st.info("👈 Masukkan data anak di sidebar untuk memulai analisis.")
+    st.info("Data kosong.")
