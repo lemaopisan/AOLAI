@@ -1,0 +1,9 @@
+Tanggal,Nama,Umur,Berat,Tinggi,Status_Berat,Status_Tinggi,LiLA,Status_Gizi_AI
+2025-12-12,tes,12,9.0,75.0,Normal,Normal,0.0,-
+2025-12-12 20:11,tes,12,9.0,75.0,Normal,Normal,13.0,GIZI BAIK (NORMAL)
+2025-12-12 20:19,crot,12,9.0,75.0,Normal,Normal,13.0,Normal
+2025-12-12 20:20,crot,14,9.5,77.0,Normal,Normal,13.159999999999997,Normal
+2025-12-12 20:20,crot,29,9.5,77.02000000000001,Kurus,Sangat Pendek,13.159999999999997,Berisiko
+2025-12-12 20:21,crot,29,12.0,77.02000000000001,Normal,Sangat Pendek,13.159999999999997,Normal
+2025-12-12 20:21,crot,29,10.0,88.0,Kurus,Normal,13.159999999999997,Normal
+2025-12-12 20:29,tes,12,9.0,75.0,Normal,Normal,13.0,Normal

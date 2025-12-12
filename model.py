@@ -1,151 +1,119 @@
-# model.py - FIXED VERSION
+import pickle
 import pandas as pd
 import numpy as np
-import joblib
-from sklearn.ensemble import RandomForestClassifier
 import os
 
-print("⚙️ Memulai Training Dual-Model System...")
+# ==========================================
+# KONFIGURASI FILE
+# ==========================================
+# Pastikan nama file ini sesuai dengan yang Anda download dari Colab
+MODEL_FILENAME = 'rf_malnutrition_model.pkl'
 
 # ==========================================
-# 1. LOAD DATA WHO (DENGAN FIX SPASI)
+# 1. FUNGSI LOAD MODEL
 # ==========================================
-def load_who_standards():
-    # Pastikan path sesuai. Jika file ada di folder 'who', gunakan prefix 'who/'
-    # Jika file sejajar dengan model.py, hapus 'who/'
-    base_path = "who/" if os.path.exists("who") else ""
-    
-    paths = {
-        'Male': {
-            'WFA': base_path + 'wfa_boys.csv', 
-            'HFA_0_2': base_path + 'hfa_boys_0_2.csv', 
-            'HFA_2_5': base_path + 'hfa_boys_2_5.csv'
-        },
-        'Female': {
-            'WFA': base_path + 'wfa_girls.csv', 
-            'HFA_0_2': base_path + 'hfa_girls_0_2.csv', 
-            'HFA_2_5': base_path + 'hfa_girls_2_5.csv'
-        }
-    }
-    
-    standards = {}
-    for gender, files in paths.items():
-        # Load WFA
-        try:
-            wfa = pd.read_csv(files['WFA'], sep=';', decimal=',')
-            wfa.columns = wfa.columns.str.strip() # Bersihkan spasi
-        except FileNotFoundError:
-            print(f"❌ File tidak ditemukan: {files['WFA']}")
-            return None
+def load_prediction_model(model_file=MODEL_FILENAME):
+    """
+    Memuat file model .pkl dari folder lokal.
+    """
+    # Cek apakah file ada di folder yang sama
+    if not os.path.exists(model_file):
+        return None
         
-        # Load HFA 0-2 & 2-5
-        try:
-            hfa1 = pd.read_csv(files['HFA_0_2'], sep=';', decimal=',')
-            hfa1.columns = hfa1.columns.str.strip() # FIX: Bersihkan SEBELUM merge
-            
-            hfa2 = pd.read_csv(files['HFA_2_5'], sep=';', decimal=',')
-            hfa2.columns = hfa2.columns.str.strip() # FIX: Bersihkan SEBELUM merge
-            
-            # Merge
-            hfa = pd.concat([hfa1, hfa2], ignore_index=True)
-            hfa = hfa.sort_values('Month').drop_duplicates(subset=['Month'])
-        except FileNotFoundError:
-             print(f"❌ File HFA tidak ditemukan untuk {gender}")
-             return None
-        
-        standards[gender] = {'WFA': wfa, 'HFA': hfa}
-    
-    return standards
-
-# ==========================================
-# 2. FUNGSI LABELING (GROUND TRUTH)
-# ==========================================
-def get_z_score(val, params):
-    # Pastikan params['L'], ['M'], ['S'] adalah float (scalar)
-    L = float(params['L'])
-    M = float(params['M'])
-    S = float(params['S'])
-    return ((val / M) ** L - 1) / (L * S)
-
-def generate_labels(row):
-    gender = row['Gender']
-    age = int(row['Age (months)'])
-    
-    # Filter data tidak valid
-    if age > 60: return pd.Series([None, None])
-    
-    std = standards.get(gender)
-    if not std: return pd.Series([None, None])
-    
     try:
-        # Ambil parameter LMS
-        wfa_p = std['WFA'].loc[std['WFA']['Month'] == age].iloc[0]
-        hfa_p = std['HFA'].loc[std['HFA']['Month'] == age].iloc[0]
-    except IndexError:
-        return pd.Series([None, None])
-
-    # Hitung Z-score
-    z_weight = get_z_score(row['Weight_kg'], wfa_p)
-    z_height = get_z_score(row['Height_cm'], hfa_p)
-    
-    # --- LOGIKA KELAS BERAT ---
-    # 0=Sangat Kurus, 1=Kurus, 2=Normal, 3=Gemuk, 4=Obesitas
-    if z_weight < -3: w_class = 0
-    elif z_weight < -2: w_class = 1
-    elif z_weight > 3: w_class = 4
-    elif z_weight > 2: w_class = 3
-    else: w_class = 2
-    
-    # --- LOGIKA KELAS TINGGI ---
-    # 0=Sangat Pendek, 1=Pendek, 2=Normal
-    if z_height < -3: h_class = 0
-    elif z_height < -2: h_class = 1
-    else: h_class = 2
-    
-    return pd.Series([w_class, h_class])
+        with open(model_file, 'rb') as file:
+            model = pickle.load(file)
+        return model
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        return None
 
 # ==========================================
-# 3. EKSEKUSI TRAINING
+# 2. FUNGSI PREDIKSI UTAMA
 # ==========================================
-standards = load_who_standards()
-
-if standards:
-    print("✅ Standar WHO berhasil dimuat.")
-    print("⏳ Sedang melatih model (Ini mungkin memakan waktu beberapa detik)...")
+def predict_malnutrition(age, weight, height, muac, gender):
+    """
+    Menerima input data pasien, memprosesnya, dan mengembalikan hasil prediksi.
     
-    try:
-        # Load Dataset Ethiopia
-        df = pd.read_csv('malnutrition_children_ethiopia.csv', sep=';')
+    Args:
+        age (int): Umur dalam bulan
+        weight (float): Berat dalam kg
+        height (float): Tinggi dalam cm
+        muac (float): LiLA (Lingkar Lengan Atas) dalam cm
+        gender (str): 'Laki-laki' atau 'Perempuan'
         
-        # Generate Label
-        df[['Weight_Class', 'Height_Class']] = df.apply(generate_labels, axis=1)
-        
-        # Hapus data yang gagal dilabeli (Age > 60 atau error)
-        df = df.dropna()
-        
-        # Persiapan Data Training
-        df['Gender_Code'] = df['Gender'].map({'Male': 1, 'Female': 0})
-        X = df[['Age (months)', 'Weight_kg', 'Height_cm', 'Gender_Code']]
-        
-        # Train Model 1: Berat
-        rf_weight = RandomForestClassifier(n_estimators=100, random_state=42)
-        rf_weight.fit(X, df['Weight_Class'].astype(int))
-        
-        # Train Model 2: Tinggi
-        rf_height = RandomForestClassifier(n_estimators=100, random_state=42)
-        rf_height.fit(X, df['Height_Class'].astype(int))
-        
-        # Simpan
-        artifacts = {
-            'model_weight': rf_weight,
-            'model_height': rf_height,
-            'standards': standards
+    Returns:
+        dict: Berisi 'status' (teks), 'code' (0/1), dan 'confidence' (persen)
+    """
+    
+    # --- LANGKAH A: Load Model ---
+    model = load_prediction_model()
+    
+    if model is None:
+        return {
+            "status": "Error: File model tidak ditemukan!",
+            "prediction_code": -1,
+            "confidence": 0
         }
-        joblib.dump(artifacts, 'smart_growth_system.pkl')
-        print("💾 SUKSES! File 'smart_growth_system.pkl' berhasil dibuat.")
-        print(f"   Akurasi Model Berat: {rf_weight.score(X, df['Weight_Class'].astype(int)):.2%}")
+
+    # --- LANGKAH B: Preprocessing Data ---
+    # Kita harus samakan formatnya dengan saat training di Colab
+    # Gender: Laki-laki = 1, Perempuan = 0
+    gender_code = 1 if gender.lower() == 'laki-laki' else 0
+    
+    # Buat DataFrame dengan nama kolom YANG SAMA PERSIS dengan training
+    # Urutan kolom: Age, Weight, Height, MUAC, Gender_Code
+    input_data = pd.DataFrame([[age, weight, height, muac, gender_code]], 
+                              columns=['Age (months)', 'Weight_kg', 'Height_cm', 'MUAC_cm', 'Gender_Code'])
+    
+    # --- LANGKAH C: Prediksi ---
+    try:
+        # Prediksi Kelas (0 atau 1)
+        prediction_class = model.predict(input_data)[0]
+        
+        # Prediksi Probabilitas (Seberapa yakin modelnya?)
+        # model.predict_proba mengembalikan array seperti [0.05, 0.95]
+        probs = model.predict_proba(input_data)[0]
+        confidence_score = np.max(probs) * 100  # Ambil yang paling tinggi dan jadikan persen
+
+        # --- LANGKAH D: Terjemahkan Hasil ---
+        if prediction_class == 1:
+            status_text = "⚠️ Terindikasi Gizi Buruk (Malnutrisi)"
+            recommendation = "Segera konsultasikan ke Posyandu atau Dokter Anak."
+        else:
+            status_text = "✅ Status Gizi Normal"
+            recommendation = "Pertahankan asupan gizi yang seimbang."
+            
+        return {
+            "status": status_text,
+            "prediction_code": int(prediction_class),
+            "confidence": round(confidence_score, 2),
+            "recommendation": recommendation
+        }
         
     except Exception as e:
-        print(f"❌ Terjadi error saat training: {e}")
-else:
-    print("❌ Gagal memuat standar WHO. Periksa nama folder/file.")
+        return {
+            "status": f"Error saat prediksi: {str(e)}",
+            "prediction_code": -1,
+            "confidence": 0
+        }
+
+# ==========================================
+# 3. TEST AREA (Hanya jalan jika file ini di-run langsung)
+# ==========================================
+if __name__ == "__main__":
+    print("🧪 --- MULAI TEST MODEL.PY ---")
+    
+    # Kasus 1: Anak Sehat (Contoh)
+    # Umur 24 bln, Berat 12kg (Bagus), LiLA 14cm (Bagus)
+    print("\n1. Test Kasus Sehat:")
+    result_sehat = predict_malnutrition(24, 12.0, 85.0, 14.0, "Laki-laki")
+    print(result_sehat)
+    
+    # Kasus 2: Anak Malnutrisi (Contoh)
+    # Umur 24 bln, Berat 8kg (Kurang), LiLA 11cm (Kecil)
+    print("\n2. Test Kasus Malnutrisi:")
+    result_sakit = predict_malnutrition(24, 8.0, 85.0, 11.0, "Perempuan")
+    print(result_sakit)
+    
+    print("\n✅ Jika kedua hasil di atas muncul, model.py sudah siap!")
