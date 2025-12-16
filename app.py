@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
 
-# ==========================================
+# ==========================================    udah terlalu kacau gainget pak ganti ganti mulu
 # 0. KONFIGURASI HALAMAN
 # ==========================================
 st.set_page_config(page_title="Growth Monitor AI + LiLA", layout="wide", page_icon="🛡️")

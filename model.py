@@ -9,7 +9,7 @@ import os
 # Pastikan nama file ini sesuai dengan yang Anda download dari Colab
 MODEL_FILENAME = 'rf_malnutrition_model.pkl'
 
-# ==========================================
+# ========================================== jerikho
 # 1. FUNGSI LOAD MODEL
 # ==========================================
 def load_prediction_model(model_file=MODEL_FILENAME):
@@ -28,7 +28,7 @@ def load_prediction_model(model_file=MODEL_FILENAME):
         print(f"Error loading model: {e}")
         return None
 
-# ==========================================
+# ==========================================dea
 # 2. FUNGSI PREDIKSI UTAMA
 # ==========================================
 def predict_malnutrition(age, weight, height, muac, gender):
@@ -98,8 +98,8 @@ def predict_malnutrition(age, weight, height, muac, gender):
             "confidence": 0
         }
 
-# ==========================================
-# 3. TEST AREA (Hanya jalan jika file ini di-run langsung)
+# ========================================== jerikho
+# 3. TEST AREA 
 # ==========================================
 if __name__ == "__main__":
     print("🧪 --- MULAI TEST MODEL.PY ---")
