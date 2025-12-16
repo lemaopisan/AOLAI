@@ -1,4 +1,4 @@
-Tanggal,Nama,Umur,Berat,Tinggi,Status_Berat,Status_Tinggi,LiLA,Status_Gizi_AI
+Tanggal,Nama,Umur,Gender,Berat,Tinggi,LiLA
 2023-10-01,Budi,24,Laki-laki,10.5,85.0,12.5
 2023-10-08,Budi,24,Laki-laki,10.3,85.0,12.2
 2023-10-15,Budi,24,Laki-laki,10.0,85.1,11.9
