@@ -59,7 +59,7 @@ def predict_malnutrition(age, weight, height, muac, gender):
     # --- LANGKAH B: Preprocessing Data ---
     # Kita harus samakan formatnya dengan saat training di Colab
     # Gender: Laki-laki = 1, Perempuan = 0
-    gender_code = 1 if gender.lower() == 'laki-laki' else 0
+    gender_code = 1 if gender.lower() in ['laki-laki', 'male'] else 0
     
     # Buat DataFrame dengan nama kolom YANG SAMA PERSIS dengan training
     # Urutan kolom: Age, Weight, Height, MUAC, Gender_Code
